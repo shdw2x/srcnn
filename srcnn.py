@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 #
+ARGS = None
 DEVICES = {False: 'cpu', True: 'cuda'}
 # DEVICE_ID = 'cpu' # set to 'cpu' for cpu, 'cuda' / 'cuda:0' or similar for gpu.
 LOG_DIR = 'checkpoints'
@@ -12,6 +13,7 @@ FOLDERS = {'train': 'train', 'validation': 'val', 'test': 'test'}
 from copy import deepcopy
 import time
 
+import arg_helper
 from srcnn_utils import *
 
 # Function to read dataset
@@ -43,14 +45,14 @@ class SRNET(nn.Module):
         super(SRNET, self).__init__()
 
         # Adding layers
-        # self.layers = []
+        self.layers = []
 
         # Place layers in a sequence 
         # self.layers = nn.Sequential(*self.layers)
         # print(self.layers)
 
-    def forward(self, grayscale_image):   
-        x = self.layers(grayscale_image)
+    def forward(self, image):   
+        x = self.layers(image)
         return x
 
 class AverageMeter(object):
@@ -93,10 +95,10 @@ def show_current_config():
 def main():
     global ARGS
     torch.multiprocessing.set_start_method('spawn', force=True)
-    ARGS = arg_handler()
+    ARGS = arg_helper.arg_handler()
     # If required args are parsed properly
     if ARGS:
-
+        show_current_config()
         # Construct network
         # torch.manual_seed(seed)
         # device = torch.device(DEVICES[useGPU])
