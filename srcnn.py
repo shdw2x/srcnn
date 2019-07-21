@@ -42,14 +42,22 @@ def get_pad_count(n, s, f):
 # SRCNN
 class SRNET(nn.Module):
     def __init__(self):
-        super(SRNET, self).__init__()
+        super(SRNET, self).__init__() #TODO: Search super(with parameters)
 
-        # Adding layers
         self.layers = []
 
-        # Place layers in a sequence 
-        # self.layers = nn.Sequential(*self.layers)
-        # print(self.layers)
+        # Adding layers
+        self.layers.append(nn.Conv2d(in_channels=1, out_channels=ARGS.kernelcounts[0], kernel_size=ARGS.kernelsizes[0], bias=True))
+        for i in range(1, ARGS.convlayers):
+            self.layers.append(nn.Conv2d(in_channels=ARGS.kernelcounts[i-1], out_channels=ARGS.kernelcounts[i], kernel_size=ARGS.kernelsizes[i], bias=True))
+              
+        # Adding ReLUs
+        for i in ARGS.relupositions:
+            self.layers.insert(i, nn.ReLU())
+
+        # Place layers in a sequence
+        self.layers = nn.Sequential(*self.layers)
+        print(self.layers)
 
     def forward(self, image):   
         x = self.layers(image)
@@ -100,10 +108,10 @@ def main():
     if ARGS:
         show_current_config()
         # Construct network
-        # torch.manual_seed(seed)
-        # device = torch.device(DEVICES[useGPU])
-        # print('Device: ' + str(device))
-        # net = SRNET().to(device=device)
+        torch.manual_seed(5)
+        device = torch.device(DEVICES[ARGS.gpu])
+        print('Device: ' + str(device))
+        net = SRNET().to(device=device)
 
         # Mean Squared Error
         # criterion = nn.MSELoss()
