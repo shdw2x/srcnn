@@ -60,8 +60,8 @@ class SRNET(nn.Module):
         print(self.layers)
 
     def forward(self, image):   
-        x = self.layers(image)
-        return x
+        pred = self.layers(image)
+        return pred
 
 class AverageMeter(object):
   '''A handy class from the PyTorch ImageNet tutorial''' 
@@ -69,21 +69,76 @@ class AverageMeter(object):
     self.reset()
 
   def reset(self):
-    self.val, self.avg, self.sum, self.count = 0, 0, 0, 0
+    self.loss, self.avg, self.loss_sum, self.loss_count = 0, 0, 0, 0
 
-  def update(self, val, n=1):
-    self.val = val
-    self.sum += val * n
-    self.count += n
-    self.avg = self.sum / self.count
-
-# Testing
-def test():
-    pass
+  def update(self, loss, n=1):
+    self.loss = loss
+    self.loss_sum += loss * n
+    self.loss_count += n
+    self.avg = self.loss_sum / self.loss_count
 
 # Training for one epoch
-def train():
-    pass
+def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
+    net.train()
+    
+    train_loss = AverageMeter() # Keep training loss for the entire epoch
+    psnr_val = AverageMeter()
+    # iter_loss = AverageMeter() # Keep training loss for each n iteration
+
+    print_freq = 100 # Printing frequency in terms of iterations for net loss
+    inputs = None
+    preds = None
+    targets = None
+
+    # For each batch (iteration)
+    for iteri, (inputs, targets) in enumerate(train_loader, 1):        
+        inputs, targets = inputs.to(device), targets.to(device)
+        
+        optimizer.zero_grad() # Clear gradients
+        preds = net(inputs) # Forward propagation
+        mse_loss = get_mse_loss(preds, targets) # get_mse_loss(y_hat, ground_truth) #TODO: loss calculation only for central pixel (check the paper)
+        psnr_val.update(compute_psnr(mse_loss.item())) #TODO per image PSNR calculation
+        mse_loss.backward() # Backpropagation
+        optimizer.step()
+        # iter_loss.update(mse_loss.item()) # TODO: check
+        train_loss.update(mse_loss.item()) # TODO: check
+
+        # Print every print_freq mini-batches
+        # if (not iteri % print_freq):
+        #     print('- Training: [E: %d, I: %3d] Loss: %.4f' % (epoch, iteri, iter_loss.avg))
+        #     iter_loss.reset()
+
+        # if (iteri==0) and VISUALIZE: 
+        #     visualize_batch(inputs, preds, targets)
+
+    # Visualize results periodically
+    draw_freq = 10 # TODO: argparse
+    if (draw_freq == 1) or (epoch % draw_freq == 0):
+        visualize_batch(inputs, preds, targets, os.path.join(LOG_DIR, 'train_e{}.png'.format(epoch)))
+
+    # Return the average loss of all batches in this epoch
+    return train_loss.avg, psnr_val.avg
+
+# Testing
+def test(test_loader, net, device, get_mse_loss):
+    net.eval()
+
+    with torch.no_grad():
+        test_loss = AverageMeter()
+        psnr_val = AverageMeter()
+        inputs = None
+        preds = None
+        targets = None
+
+        for iteri, (inputs, targets) in enumerate(test_loader, 1):
+            inputs, targets = inputs.to(device), targets.to(device)
+
+            preds = net(inputs)
+            mse_loss = get_mse_loss(preds, targets)
+            psnr_val.update(compute_psnr(mse_loss.item())) #TODO per image PSNR calculation
+            test_loss.update(mse_loss.item())
+
+    return test_loss.avg, psnr_val.avg
 
 def get_current_config():
     global ARGS
@@ -114,9 +169,9 @@ def main():
         net = SRNET().to(device=device)
 
         # Mean Squared Error
-        # criterion = nn.MSELoss()
+        get_mse_loss = nn.MSELoss()
         # Optimizer: Stochastic Gradient Descend with initial learning rate
-        # optimizer = optim.SGD(net.parameters(), lr=lr)
+        optimizer = optim.SGD(net.parameters(), lr=0.001) #TODO: change lr per layer (check the paper)
         # Learning rate scheduler
         # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, 
                                                         #  patience=lr_patience, min_lr=min_lr, verbose=True)
@@ -130,11 +185,15 @@ def main():
 
         # Training mode
         if (run_train):
+            print("Training started.")
             # Initialization
             # train_loader = loaders['train']
             # val_loader = loaders['val']
             try:
-                pass
+                MAX_EPOCH = 101
+                for epoch in range(1, MAX_EPOCH):
+                    # Train over full dataset (1 epoch)
+                    train_loss = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
                          
             except KeyboardInterrupt:
                 print("\nKeyboard interrupt, stoping execution...\n")
@@ -159,9 +218,11 @@ def main():
                 # }
                 # save_stats("stats.txt", stats, path=LOG_DIR)
                 # print('Saved.')
-
+        # Testing mode
         elif (run_test):
-            pass
+            print("Testing started.")
+            # test_loader = loaders['test']
+            test()
 
 if __name__ == "__main__":
     main()

@@ -15,6 +15,7 @@ import torchvision
 import torchvision.transforms as transforms
 from skimage import io, color
 from skimage.transform import rescale
+from skimage.measure import compare_psnr
 
 def read_image(filename):
     pass
@@ -165,3 +166,6 @@ def prepare_plot(ax, losses, epochs, color, label):
     ax.plot(epochs, losses, "o-", color='tab:'+color, label=label)
     ax.grid(True)
     ax.legend()
+
+def compute_psnr(mse_loss, max_val=255):
+    return 20.0 * np.log10(max_val/mse_loss)

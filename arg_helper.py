@@ -1,13 +1,6 @@
 import argparse
 import sys
 
-# Disable multiple occurences of the same flag
-class UniqueStore(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string):
-        if getattr(namespace, self.dest, self.default) is not None:
-            parser.error(option_string + " appears several times.")
-        setattr(namespace, self.dest, values)
-
 # Custom format for arg Help print
 class CustomFormatter(argparse.HelpFormatter):
     def __init__(self,
@@ -98,7 +91,6 @@ def arg_handler():
                        help="Specify pipeline execution mode", 
                        type=str,
                        choices=['train', 'test', 'full'], 
-                       action=UniqueStore,
                        default="train")
     
     group.add_argument("-bs", "--batchsize",  
