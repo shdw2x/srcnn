@@ -88,19 +88,32 @@ def arg_handler():
     group = parser.add_argument_group(title='required arguments')
     
     group.add_argument("-p", "--pipe",  
-                       help="Specify pipeline execution mode", 
+                       help="Specify pipeline execution mode (default: train)", 
                        type=str,
                        choices=['train', 'test', 'full'], 
                        default="train")
+
+    group.add_argument("-cs", "--colorspace",
+                       help="Specify color space for train image (default: ycbcr)", 
+                       type=str,
+                       metavar="CSPACE",
+                       choices=['rgb', 'ycbcr'],
+                       default="ycbcr")
+
+    group.add_argument("-sf", "--scalefactor",
+                       help="Specify scale factor for upsampling (default: 2)",
+                       type=convert_positive_int,
+                       metavar="FACTOR",
+                       default=2)
     
     group.add_argument("-bs", "--batchsize",  
-                       help="Specify batch size (e.g. 16)", 
+                       help="Specify batch size (default: 256)", 
                        type=convert_positive_int, 
                        metavar="BATCH",
-                       default=16)
+                       default=256)
     
     group.add_argument("-cl", "--convlayers",  
-                       help="Specify number of convolutional layers (e.g. 1, 2, 4)", 
+                       help="Specify number of convolutional layers (default: 3)", 
                        type=convert_positive_int, 
                        metavar="CONV", 
                        default=3)
@@ -108,28 +121,28 @@ def arg_handler():
     group.add_argument("-ks", "--kernelsizes", 
                        nargs='+',
                        type=convert_positive_int,
-                       help="Specify kernel sizes for each convolutional layer (e.g. [1, 2, 3...])",
+                       help="Specify kernel sizes for each convolutional layer (default: 9 1 5...)",
                        metavar="KSIZES", 
                        default=[9, 1, 5])
     
     group.add_argument("-kc", "--kernelcounts", 
                        nargs='+',
                        type=convert_positive_int,
-                       help="Specify number of kernels for each convolutional layer (e.g. [2, 4, 8...])", 
+                       help="Specify number of kernels for each convolutional layer (default: 64 32 3...)", 
                        metavar="KCOUNTS", 
                        default=[64, 32, 3]) #TODO: Think about last channel due to grayscale
     
     group.add_argument("-rp", "--relupositions", 
                        nargs='+',
                        type=convert_positive_int,  
-                       help="Specify after which convolutional layer ReLU takes place (e.g. 3, [1, 3, 5])", 
+                       help="Specify after which convolutional layer ReLU takes place (default: 1 2 3...)", 
                        metavar="POS", 
                        default=[1])
     
     group.add_argument("-lr", "--learnrates", 
                        nargs='+',
                        type=convert_positive_float,
-                       help="Specify learning rate (e.g. [0.0001, 0.1])", 
+                       help="Specify learning rate (default: 0.0001 0.001 0.01...)", 
                        metavar="LR",
                        default=[0.0001, 0.001, 0.01])
 

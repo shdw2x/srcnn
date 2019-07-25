@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-
-#
-ARGS = None
-DEVICES = {False: 'cpu', True: 'cuda'}
-# DEVICE_ID = 'cpu' # set to 'cpu' for cpu, 'cuda' / 'cuda:0' or similar for gpu.
-LOG_DIR = 'checkpoints'
-VISUALIZE = False # set True to visualize input, prediction and the output from the last batch
-DATA_ROOT = ''
-FOLDERS = {'train': 'train', 'validation': 'val', 'test': 'test'}
-
 # Standard libraries
 from copy import deepcopy
 import time
@@ -17,21 +7,18 @@ import arg_helper
 from srcnn_utils import *
 
 # Function to read dataset
-def get_loaders(batch_size, device, **kwargs):
+def get_loaders(device, **kwargs):
     load_train = kwargs.get('load_train', False) 
     load_test = kwargs.get('load_test', False)
     loaders = {}
     if load_train:
-        # indices = range(100) # TODO: For sanity check
-        train_set = ImageFolder(root=os.path.join(DATA_ROOT, FOLDERS['train']), device=device)
-        # train_set = torch.utils.data.Subset(train_set, indices) # TODO: For sanity check
-        loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
-        val_set = ImageFolder(root=os.path.join(DATA_ROOT, FOLDERS['validation']), device=device)
-        # val_set = torch.utils.data.Subset(val_set, indices) # TODO: For sanity check
-        loaders['val'] = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
+        train_set = ImageFolder(root=globals.DATA_ROOT+'train')
+        loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=globals.ARGS.batchsize, shuffle=True, num_workers=0)
+        # val_set = ImageFolder(root=globals.DATA_ROOT+'validation')
+        # loaders['val'] = torch.utils.data.DataLoader(val_set, batch_size=globals.ARGS.batchsize, shuffle=False, num_workers=0)
     if load_test:
-        test_set = ImageFolder(root=os.path.join(DATA_ROOT, FOLDERS['test']), device=device)
-        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0)
+        test_set = ImageFolder(root=globals.DATA_ROOT+'test')
+        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=globals.ARGS.batchsize, shuffle=False, num_workers=0)
     return loaders
 
 def get_pad_count(n, s, f):
@@ -47,12 +34,12 @@ class SRNET(nn.Module):
         self.layers = []
 
         # Adding layers
-        self.layers.append(nn.Conv2d(in_channels=1, out_channels=ARGS.kernelcounts[0], kernel_size=ARGS.kernelsizes[0], bias=True))
-        for i in range(1, ARGS.convlayers):
-            self.layers.append(nn.Conv2d(in_channels=ARGS.kernelcounts[i-1], out_channels=ARGS.kernelcounts[i], kernel_size=ARGS.kernelsizes[i], bias=True))
+        self.layers.append(nn.Conv2d(in_channels=1, out_channels=globals.ARGS.kernelcounts[0], kernel_size=globals.ARGS.kernelsizes[0], bias=True))
+        for i in range(1, globals.ARGS.convlayers):
+            self.layers.append(nn.Conv2d(in_channels=globals.ARGS.kernelcounts[i-1], out_channels=globals.ARGS.kernelcounts[i], kernel_size=globals.ARGS.kernelsizes[i], bias=True))
               
         # Adding ReLUs
-        for i in ARGS.relupositions:
+        for i in globals.ARGS.relupositions:
             self.layers.insert(i, nn.ReLU())
 
         # Place layers in a sequence
@@ -108,13 +95,13 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
         #     print('- Training: [E: %d, I: %3d] Loss: %.4f' % (epoch, iteri, iter_loss.avg))
         #     iter_loss.reset()
 
-        # if (iteri==0) and VISUALIZE: 
+        # if (iteri==0) and globals.VISUALIZE: 
         #     visualize_batch(inputs, preds, targets)
 
     # Visualize results periodically
     draw_freq = 10 # TODO: argparse
     if (draw_freq == 1) or (epoch % draw_freq == 0):
-        visualize_batch(inputs, preds, targets, os.path.join(LOG_DIR, 'train_e{}.png'.format(epoch)))
+        visualize_batch(inputs, preds, targets, os.path.join(globals.LOG_DIR, 'train_e{}.png'.format(epoch)))
 
     # Return the average loss of all batches in this epoch
     return train_loss.avg, psnr_val.avg
@@ -141,9 +128,8 @@ def test(test_loader, net, device, get_mse_loss):
     return test_loss.avg, psnr_val.avg
 
 def get_current_config():
-    global ARGS
     """Return a string indicating current parameter configuration"""
-    config = vars(ARGS)
+    config = vars(globals.ARGS)
     message = "\nRunning with the following parameter settings:\n"
     separator = "-" * (len(message)-2) + "\n"
     lines = ""
@@ -156,15 +142,14 @@ def show_current_config():
     print(get_current_config())
 
 def main():
-    global ARGS
     torch.multiprocessing.set_start_method('spawn', force=True)
-    ARGS = arg_helper.arg_handler()
+    globals.ARGS = arg_helper.arg_handler()
     # If required args are parsed properly
-    if ARGS:
+    if globals.ARGS:
         show_current_config()
         # Construct network
         torch.manual_seed(5)
-        device = torch.device(DEVICES[ARGS.gpu])
+        device = torch.device(globals.DEVICES[globals.ARGS.gpu])
         print('Device: ' + str(device))
         net = SRNET().to(device=device)
 
@@ -176,18 +161,18 @@ def main():
         # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, 
                                                         #  patience=lr_patience, min_lr=min_lr, verbose=True)
         # Determine pipeline execution
-        run_full = (ARGS.pipe == "full")
-        run_train = run_full or (ARGS.pipe == "train")
-        run_test = run_full or (ARGS.pipe == "test")
+        run_full = (globals.ARGS.pipe == "full")
+        run_train = run_full or (globals.ARGS.pipe == "train")
+        run_test = run_full or (globals.ARGS.pipe == "test")
 
         # Get loaders as dict
-        # loaders = get_loaders(batch_size, device, load_train=run_train, load_test=run_test)
+        loaders = get_loaders(device, load_train=run_train, load_test=run_test)
 
         # Training mode
         if (run_train):
             print("Training started.")
             # Initialization
-            # train_loader = loaders['train']
+            train_loader = loaders['train']
             # val_loader = loaders['val']
             try:
                 MAX_EPOCH = 101
@@ -202,8 +187,8 @@ def main():
                 pass
                 # print('Training finished!')
                 # print('Saving training data...')
-                # draw_train_val_plots(train_losses, val_losses, path=LOG_DIR, show=False)
-                # draw_accuracy_plot(accuracies, len(train_losses), path=LOG_DIR, show=False)
+                # draw_train_val_plots(train_losses, val_losses, path=globals.LOG_DIR, show=False)
+                # draw_accuracy_plot(accuracies, len(train_losses), path=globals.LOG_DIR, show=False)
                 # stats = {
                 #     'train_losses': train_losses,
                 #     'val_losses': val_losses,
@@ -216,7 +201,7 @@ def main():
                 #     'best_accuracy_epoch': np.argmax(accuracies) + 1,
                 #     'best_loss_epoch': (np.argmin(val_losses) + 1) * val_freq,
                 # }
-                # save_stats("stats.txt", stats, path=LOG_DIR)
+                # save_stats("stats.txt", stats, path=globals.LOG_DIR)
                 # print('Saved.')
         # Testing mode
         elif (run_test):
@@ -225,4 +210,5 @@ def main():
             test()
 
 if __name__ == "__main__":
+    globals.initialize()
     main()

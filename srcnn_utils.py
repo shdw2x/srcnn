@@ -1,5 +1,3 @@
-# These are utility functions / classes that you probably dont need to alter.
-
 # import functools
 import os
 import re
@@ -7,6 +5,7 @@ import re
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
+from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,34 +14,40 @@ import torchvision
 import torchvision.transforms as transforms
 from skimage import io, color
 from skimage.transform import rescale
-from skimage.measure import compare_psnr
 
-def read_image(filename):
-    pass
+import globals
 
-def upscale(image):
-    pass
+def bicubic_interpolation(image, scale_factor):
+    """Takes PIL image, returns up or downscaled image using bicubic interpolation"""
+    width, height = image.size
+    new_size = (int(width*scale_factor), int(height*scale_factor))
+    scaled_image = image.resize(new_size, Image.BICUBIC)
+    return scaled_image
 
 norm_vfunc = np.vectorize(lambda x: (2*x)/255 - 1)
 denorm_vfunc = np.vectorize(lambda x: (255*x + 255) / 2)
 
-def tensorshow(tensor,cmap=None):
-    img = transforms.functional.to_pil_image(tensor/2+0.5)
-    if cmap is not None:
-        plt.imshow(img,cmap=cmap)
-    else:
-        plt.imshow(img)
+def modulation_crop(img, scale_factor):
+    """Crop image by a few pixels to make the resolution a multiple of scale_factor"""
+    w, h = img.size
+    new_w, new_h = w - (w % scale_factor), h - (h % scale_factor)
+    cropped_img = img.crop((0, 0, new_w, new_h))
+    return cropped_img
 
-#TODO: Change
+#TODO: reimplement
+def tensorshow(img, cmap=None):
+    # img = transforms.functional.to_pil_image(tensor/2 + 0.5)
+    img.show()
+
+#TODO: Cb, Cr need to be added later
 class ImageFolder(torchvision.datasets.ImageFolder):
     """A version of the ImageFolder dataset class, customized for the super-resolution task"""
 
-    def __init__(self, root, device):
+    def __init__(self, root):
         super(ImageFolder, self).__init__(root, transform=None)
-        self.device = device
 
-    def prepimg(self,img):
-        return (transforms.functional.to_tensor(img)-0.5)*2 # normalize tensorized image from [0,1] to [-1,+1]
+    def to_tensor(self, img):
+        return transforms.functional.to_tensor(img) # to_tensor: Normalizes automatically (from docs)
 
     def __getitem__(self, index):
         """
@@ -52,23 +57,26 @@ class ImageFolder(torchvision.datasets.ImageFolder):
         Returns:
             tuple: (grayscale_image, color_image) where grayscale_image is the decolorized version of the color_image.
         """
-        color_image,_ = super(ImageFolder, self).__getitem__(index) # Image object (PIL)
-        grayscale_image = torchvision.transforms.functional.to_grayscale(color_image)
-        return self.prepimg(grayscale_image).to(self.device), self.prepimg(color_image).to(self.device)
+        rgb_image, _ = super(ImageFolder, self).__getitem__(index) # ImageFolder.__getitem__: returns PIL object in RGB mode (from docs)
+        y, cb, cr = rgb_image.convert('YCbCr').split()
+        target = modulation_crop(y, globals.ARGS.scalefactor)
+        y_downscaled = bicubic_interpolation(target, 1/globals.ARGS.scalefactor)
+        input = bicubic_interpolation(y_downscaled, globals.ARGS.scalefactor) # y_upscaled
+        return self.to_tensor(input), self.to_tensor(target)
 
-def visualize_batch(inputs,preds,targets,save_path=''):
+def visualize_batch(inputs, preds, targets, save_path=''):
     inputs = inputs.cpu()
     preds = preds.cpu()
     targets = targets.cpu()
     plt.clf()
     bs = inputs.shape[0] if inputs.shape[0] < 5 else 5
     for j in range(bs):
-        plt.subplot(3,bs,j+1)
+        plt.subplot(3, bs, j+1)
         assert(inputs[j].shape[0]==1)
-        tensorshow(inputs[j],cmap='gray')
-        plt.subplot(3,bs,bs+j+1)
+        tensorshow(inputs[j], cmap='gray')
+        plt.subplot(3, bs, bs+j+1)
         tensorshow(preds[j])
-        plt.subplot(3,bs,2*bs+j+1)
+        plt.subplot(3, bs, 2*bs+j+1)
         tensorshow(targets[j])
     if save_path is not '':
         plt.savefig(save_path)
