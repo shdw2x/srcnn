@@ -21,22 +21,24 @@ def get_loaders(device, **kwargs):
         loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=globals.ARGS.batchsize, shuffle=False, num_workers=0)
     return loaders
 
-def get_pad_count(n, s, f):
-    padding = ((n*s)-s-n+f) / 2
-    assert padding.is_integer()
-    return int(padding)
-
 # SRCNN
 class SRNET(nn.Module):
     def __init__(self):
         super(SRNET, self).__init__() #TODO: Search super(with parameters)
 
         self.layers = []
+        calculate_padding = lambda f: int(arg_helper.get_pad_count(f))
 
         # Adding layers
-        self.layers.append(nn.Conv2d(in_channels=1, out_channels=globals.ARGS.kernelcounts[0], kernel_size=globals.ARGS.kernelsizes[0], bias=True))
+        # Adding first convolutional layer
+        kernel_size = globals.ARGS.kernelsizes[0]
+        self.layers.append(nn.Conv2d(in_channels=1, out_channels=globals.ARGS.kernelcounts[0], 
+                                     kernel_size=kernel_size, padding=calculate_padding(kernel_size), bias=True))
+        # Adding remaining convolutional layers
         for i in range(1, globals.ARGS.convlayers):
-            self.layers.append(nn.Conv2d(in_channels=globals.ARGS.kernelcounts[i-1], out_channels=globals.ARGS.kernelcounts[i], kernel_size=globals.ARGS.kernelsizes[i], bias=True))
+            kernel_size = globals.ARGS.kernelsizes[i]
+            self.layers.append(nn.Conv2d(in_channels=globals.ARGS.kernelcounts[i-1], out_channels=globals.ARGS.kernelcounts[i], 
+                                         kernel_size=kernel_size, padding=calculate_padding(kernel_size), bias=True))
               
         # Adding ReLUs
         for i in globals.ARGS.relupositions:
@@ -95,13 +97,10 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
         #     print('- Training: [E: %d, I: %3d] Loss: %.4f' % (epoch, iteri, iter_loss.avg))
         #     iter_loss.reset()
 
-        # if (iteri==0) and globals.VISUALIZE: 
-        #     visualize_batch(inputs, preds, targets)
-
-    # Visualize results periodically
-    draw_freq = 10 # TODO: argparse
+    # Visualize results periodically (epochs)
+    draw_freq = 3
     if (draw_freq == 1) or (epoch % draw_freq == 0):
-        visualize_batch(inputs, preds, targets, os.path.join(globals.LOG_DIR, 'train_e{}.png'.format(epoch)))
+        visualize_batch(inputs, preds, targets) # To save pass this: os.path.join(globals.LOG_DIR, 'train_e{}.png'.format(epoch))
 
     # Return the average loss of all batches in this epoch
     return train_loss.avg, psnr_val.avg
@@ -149,14 +148,37 @@ def main():
         show_current_config()
         # Construct network
         torch.manual_seed(5)
-        device = torch.device(globals.DEVICES[globals.ARGS.gpu])
+        device = torch.device(globals.DEVICES[globals.ARGS.nogpu])
         print('Device: ' + str(device))
         net = SRNET().to(device=device)
 
         # Mean Squared Error
         get_mse_loss = nn.MSELoss()
+
+        # Assume N convolutional layers with bias, params_list: [W0, B0, W1, B1,... WN, BN]
+        params_list = list(net.parameters())
+        # groups: [{'params': (W0, B0), 'lr': lr0},... {'params': (WN, BN), 'lr': lrN}]
+        groups = []
+        for i in range(0, len(params_list), 2): # 0, 2... N
+            # Convolutional layer-k: (Wk, Bk), params_list[i]: Wk, params_list[i+1]: Bk
+            params = {}
+            weight = params_list[i]
+            bias = params_list[i+1]
+            weight_bias_pair = (weight, bias)
+            # Get LR for each layer
+            lr = globals.ARGS.learnrates[i//2]
+            params['params'] = weight_bias_pair
+            params["lr"] = lr
+            groups.append(params)
+
         # Optimizer: Stochastic Gradient Descend with initial learning rate
-        optimizer = optim.SGD(net.parameters(), lr=0.001) #TODO: change lr per layer (check the paper)
+        optimizer = optim.SGD(groups, lr=1e-05) # Default lr (if unspecified) is 1e-05
+
+        # for group in optimizer.param_groups:
+        #     print(group["params"][0].size()) # weight
+        #     print(group["params"][1].size()) # bias
+        #     print()
+
         # Learning rate scheduler
         # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, 
                                                         #  patience=lr_patience, min_lr=min_lr, verbose=True)
@@ -178,8 +200,9 @@ def main():
                 MAX_EPOCH = 101
                 for epoch in range(1, MAX_EPOCH):
                     # Train over full dataset (1 epoch)
-                    train_loss = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
-                         
+                    train_loss, train_psnr = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
+                    print('* Training loss for current epoch: %.4f' % train_loss)
+                    print('* Training PSNR for current epoch: %.4f' % train_psnr)
             except KeyboardInterrupt:
                 print("\nKeyboard interrupt, stoping execution...\n")
                 

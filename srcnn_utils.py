@@ -12,10 +12,18 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
-from skimage import io, color
-from skimage.transform import rescale
 
 import globals
+
+
+"""
+#TODO: 
+Loss plot
+PSNR plot
+PSNR loss print
+Visualize batch side by side
+Print the name of the images (input, pred, target)
+"""
 
 def bicubic_interpolation(image, scale_factor):
     """Takes PIL image, returns up or downscaled image using bicubic interpolation"""
@@ -34,10 +42,12 @@ def modulation_crop(img, scale_factor):
     cropped_img = img.crop((0, 0, new_w, new_h))
     return cropped_img
 
-#TODO: reimplement
-def tensorshow(img, cmap=None):
-    # img = transforms.functional.to_pil_image(tensor/2 + 0.5)
-    img.show()
+def tensorshow(tensor, cmap=None):
+    img = transforms.functional.to_pil_image(tensor)
+    if cmap is not None:
+        plt.imshow(img, cmap=cmap)
+    else:
+        plt.imshow(img)
 
 #TODO: Cb, Cr need to be added later
 class ImageFolder(torchvision.datasets.ImageFolder):
@@ -81,7 +91,7 @@ def visualize_batch(inputs, preds, targets, save_path=''):
     if save_path is not '':
         plt.savefig(save_path)
     else:
-        plt.show(block=True)
+        plt.show(block=False)
 
 def save_stats(filename, stats, **kwargs):
     pass

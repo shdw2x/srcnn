@@ -42,6 +42,10 @@ def convert_positive_float(value):
         raise argparse.ArgumentTypeError("Positive float is expected but got: {}".format(value))
     return value
 
+def get_pad_count(f):
+    """Pad count for convolutional layer when stride is one"""
+    return (f-1) / 2
+
 def group_arg_list_size_check(args):
 
     len_layer = args.convlayers
@@ -55,7 +59,12 @@ def group_arg_list_size_check(args):
         assert len_layer == len_kc, "Layer count ({}) does not match with kernel counts ({})".format(len_layer, len_kc)
         assert len_layer >= len_rp, "Layer count ({}) is smaller than the number of relu positions given ({})".format(len_layer, len_rp)
         assert len_layer == len_lr, "Layer count ({}) does not match with learning rates ({})".format(len_layer, len_lr)
-        
+
+        # Checking each kernel size for padding
+        for ks in args.kernelsizes:
+            padding = get_pad_count(ks)
+            assert padding.is_integer(), "Invalid kernel size ({}) for proper calculation of padding ({})".format(ks, padding)
+
         # Sort ReLU Positions
         relu_positions = args.relupositions = sorted(args.relupositions)
 
@@ -81,7 +90,7 @@ def arg_handler():
                                      add_help=False)
     # Optional flags
     parser.add_argument("-h", "--help", help="Help message", action="store_true")
-    parser.add_argument("-g", "--gpu", help="Use GPU", default=True, action="store_true")
+    parser.add_argument("-ng", "--nogpu", help="Use GPU", default=False, action="store_true")
 
     # Required flags
     enable_exec = ("-h" not in sys.argv)
@@ -107,10 +116,10 @@ def arg_handler():
                        default=2)
     
     group.add_argument("-bs", "--batchsize",  
-                       help="Specify batch size (default: 256)", 
+                       help="Specify batch size (default: 1)", 
                        type=convert_positive_int, 
                        metavar="BATCH",
-                       default=256)
+                       default=1)
     
     group.add_argument("-cl", "--convlayers",  
                        help="Specify number of convolutional layers (default: 3)", 
@@ -128,23 +137,23 @@ def arg_handler():
     group.add_argument("-kc", "--kernelcounts", 
                        nargs='+',
                        type=convert_positive_int,
-                       help="Specify number of kernels for each convolutional layer (default: 64 32 3...)", 
+                       help="Specify number of kernels for each convolutional layer (default: 64 32 1...)", 
                        metavar="KCOUNTS", 
-                       default=[64, 32, 3]) #TODO: Think about last channel due to grayscale
+                       default=[64, 32, 1])
     
     group.add_argument("-rp", "--relupositions", 
                        nargs='+',
                        type=convert_positive_int,  
                        help="Specify after which convolutional layer ReLU takes place (default: 1 2 3...)", 
                        metavar="POS", 
-                       default=[1])
+                       default=[1, 2])
     
     group.add_argument("-lr", "--learnrates", 
                        nargs='+',
                        type=convert_positive_float,
-                       help="Specify learning rate (default: 0.0001 0.001 0.01...)", 
+                       help="Specify learning rate (default: 0.0001 0.0001 0.00001...)", 
                        metavar="LR",
-                       default=[0.0001, 0.001, 0.01])
+                       default=[1e-04, 1e-04, 1e-05])
 
     args = parser.parse_args()
 
