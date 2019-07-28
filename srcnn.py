@@ -6,21 +6,6 @@ import time
 import arg_helper
 from srcnn_utils import *
 
-# Function to read dataset
-def get_loaders(device, **kwargs):
-    load_train = kwargs.get('load_train', False) 
-    load_test = kwargs.get('load_test', False)
-    loaders = {}
-    if load_train:
-        train_set = ImageFolder(root=globals.DATA_ROOT+'train')
-        loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=globals.ARGS.batchsize, shuffle=True, num_workers=0)
-        # val_set = ImageFolder(root=globals.DATA_ROOT+'validation')
-        # loaders['val'] = torch.utils.data.DataLoader(val_set, batch_size=globals.ARGS.batchsize, shuffle=False, num_workers=0)
-    if load_test:
-        test_set = ImageFolder(root=globals.DATA_ROOT+'test')
-        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=globals.ARGS.batchsize, shuffle=False, num_workers=0)
-    return loaders
-
 # SRCNN
 class SRNET(nn.Module):
     def __init__(self):
@@ -105,7 +90,7 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
     # Return the average loss of all batches in this epoch
     return train_loss.avg, psnr_val.avg
 
-# Testing
+# Testing or Validation
 def test(test_loader, net, device, get_mse_loss):
     net.eval()
 
@@ -126,26 +111,40 @@ def test(test_loader, net, device, get_mse_loss):
 
     return test_loss.avg, psnr_val.avg
 
-def get_current_config():
-    """Return a string indicating current parameter configuration"""
-    config = vars(globals.ARGS)
-    message = "\nRunning with the following parameter settings:\n"
-    separator = "-" * (len(message)-2) + "\n"
-    lines = ""
-    for item, key in config.items():
-        lines += "- {}: {}\n".format(item, key)
-    return (message + separator + lines + separator)
-
-def show_current_config():
-    """Print current parameter configuration"""
-    print(get_current_config())
-
 def main():
     torch.multiprocessing.set_start_method('spawn', force=True)
     globals.ARGS = arg_helper.arg_handler()
+
     # If required args are parsed properly
     if globals.ARGS:
+        output_root = globals.OUTPUT_ROOT # outputs/
+        output_folder_name = globals.ARGS.outputfolder # outputs/output_folder_name
+
+        # Check if outputs directory exists, if not create the directory
+        if not os.path.exists(output_root):
+            os.mkdir(output_root)
+
+        # Check if output folder name is provided from console, if not create a default name
+        if not output_folder_name:
+            output_folder_name = create_output_folder_name()
+            globals.ARGS.outputfolder = output_folder_name
+
+        # Output folder path
+        subfolder = output_root + output_folder_name + "/"
+
+        # Check if output_folder_name exists, if not create one, otherwise abort
+        if not os.path.exists(subfolder):
+            os.mkdir(subfolder)
+        else:
+            print("Directory already exists: {}".format(subfolder))
+            exit(1)
+
+        # Prints parameter settings (user-provided input or default values) given from the console
         show_current_config()
+
+        # Saves parameter settings to a file under subfolder directory
+        write_current_config(subfolder)
+
         # Construct network
         torch.manual_seed(5)
         device = torch.device(globals.DEVICES[globals.ARGS.nogpu])
@@ -183,9 +182,10 @@ def main():
         # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, 
                                                         #  patience=lr_patience, min_lr=min_lr, verbose=True)
         # Determine pipeline execution
-        run_full = (globals.ARGS.pipe == "full")
-        run_train = run_full or (globals.ARGS.pipe == "train")
-        run_test = run_full or (globals.ARGS.pipe == "test")
+        pipe = globals.ARGS.pipe
+        run_full = (pipe == "full")
+        run_train = run_full or (pipe == "train")
+        run_test = run_full or (pipe == "test")
 
         # Get loaders as dict
         loaders = get_loaders(device, load_train=run_train, load_test=run_test)
@@ -195,7 +195,7 @@ def main():
             print("Training started.")
             # Initialization
             train_loader = loaders['train']
-            # val_loader = loaders['val']
+            val_loader = loaders['validation']
             try:
                 MAX_EPOCH = 101
                 for epoch in range(1, MAX_EPOCH):
@@ -203,6 +203,11 @@ def main():
                     train_loss, train_psnr = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
                     print('* Training loss for current epoch: %.4f' % train_loss)
                     print('* Training PSNR for current epoch: %.4f' % train_psnr)
+
+                    # Validation over validation set
+                    val_loss, val_psnr = test(val_loader, net, device, get_mse_loss)
+                    print('* Validation loss for current epoch: %.4f' % val_loss)
+                    print('* Validation PSNR for current epoch: %.4f' % val_psnr)
             except KeyboardInterrupt:
                 print("\nKeyboard interrupt, stoping execution...\n")
                 
@@ -230,7 +235,7 @@ def main():
         elif (run_test):
             print("Testing started.")
             # test_loader = loaders['test']
-            test()
+            test() # TODO: Give params
 
 if __name__ == "__main__":
     globals.initialize()

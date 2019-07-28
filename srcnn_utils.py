@@ -23,6 +23,7 @@ PSNR plot
 PSNR loss print
 Visualize batch side by side
 Print the name of the images (input, pred, target)
+PSNR for current epoch: 62.0725 (wrong value)
 """
 
 def bicubic_interpolation(image, scale_factor):
@@ -31,6 +32,9 @@ def bicubic_interpolation(image, scale_factor):
     new_size = (int(width*scale_factor), int(height*scale_factor))
     scaled_image = image.resize(new_size, Image.BICUBIC)
     return scaled_image
+
+def compute_psnr(mse_loss, max_val=255):
+    return 20.0 * np.log10(max_val/mse_loss)
 
 norm_vfunc = np.vectorize(lambda x: (2*x)/255 - 1)
 denorm_vfunc = np.vectorize(lambda x: (255*x + 255) / 2)
@@ -73,6 +77,24 @@ class ImageFolder(torchvision.datasets.ImageFolder):
         y_downscaled = bicubic_interpolation(target, 1/globals.ARGS.scalefactor)
         input = bicubic_interpolation(y_downscaled, globals.ARGS.scalefactor) # y_upscaled
         return self.to_tensor(input), self.to_tensor(target)
+
+# Function to read dataset
+def get_loaders(device, **kwargs):
+    load_train = kwargs.get('load_train', False) 
+    load_test = kwargs.get('load_test', False)
+    batch_size = globals.ARGS.batchsize
+    data_root = globals.DATA_ROOT
+    loaders = {}
+    
+    if load_train:
+        train_set = ImageFolder(root=data_root + 'train')
+        loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
+        val_set = ImageFolder(root=data_root + 'validation')
+        loaders['validation'] = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
+    if load_test:
+        test_set = ImageFolder(root=data_root + 'test')
+        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0)
+    return loaders
 
 def visualize_batch(inputs, preds, targets, save_path=''):
     inputs = inputs.cpu()
@@ -122,10 +144,12 @@ def plot_train_val_loss(train_losses, val_losses, **kwargs):
         # Plot for training
         train_epochs = range(1, l_train+1)
         prepare_plot(ax, train_losses, train_epochs, 'blue', 'train')
+
         # If separate figures desired
         if not combined:
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
+
         # Plot for validation
         val_freq = int(l_train / l_val)
         val_epochs = range(val_freq, l_train+1, val_freq)
@@ -185,5 +209,45 @@ def prepare_plot(ax, losses, epochs, color, label):
     ax.grid(True)
     ax.legend()
 
-def compute_psnr(mse_loss, max_val=255):
-    return 20.0 * np.log10(max_val/mse_loss)
+def get_current_config():
+    """Return a string indicating current parameter configuration"""
+    config = vars(globals.ARGS)
+    message = "\nParameter settings:\n"
+    separator = "-" * (len(message)-2) + "\n"
+    lines = ""
+    for item, key in config.items():
+        lines += "- {}: {}\n".format(item, key)
+    return (message + separator + lines + separator)
+
+def show_current_config():
+    """Print current parameter configuration"""
+    print(get_current_config())
+
+def write_current_config(path):
+    with open(path + "config.txt", 'w+') as file:
+        file.write(get_current_config())
+    print("Configuration saved.")
+
+# Returns the name of the folder
+def create_output_folder_name():
+    output_root = globals.OUTPUT_ROOT
+    folder_names = os.listdir(output_root)
+
+    # Search for folder names including "exp"
+    exp_folder_names = list(filter(lambda folder_name: "exp" in folder_name, folder_names))
+
+    if not exp_folder_names:
+        return "exp_1"
+        
+    # Sort folder names with respect to numbers appended
+    exp_folder_names.sort(key=lambda f: int(str().join(filter(str.isdigit, f))))
+
+    # Get the name of the folder with highest number
+    recent_folder_name = exp_folder_names[-1]
+
+    # Partition the name into two ("exp", "Digits")
+    parts = recent_folder_name.split('_')
+
+    # Create folder name exp_digits
+    next_folder_name = parts[0] + '_' + str(int(parts[1]) + 1)
+    return next_folder_name

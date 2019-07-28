@@ -155,6 +155,12 @@ def arg_handler():
                        metavar="LR",
                        default=[1e-04, 1e-04, 1e-05])
 
+    group.add_argument("-of", "--outputfolder", 
+                       type=str,
+                       help="Specify output folder name (default: '')", 
+                       metavar="FOLDER",
+                       default="")
+
     args = parser.parse_args()
 
     # Print help if -h is used
