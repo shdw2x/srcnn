@@ -65,7 +65,7 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
     targets = None
 
     # For each batch (iteration)
-    for iteri, (inputs, targets) in enumerate(train_loader, 1):        
+    for iteri, (inputs, targets, paths) in enumerate(train_loader, 1):        
         inputs, targets = inputs.to(device), targets.to(device)
         
         optimizer.zero_grad() # Clear gradients
@@ -83,9 +83,10 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
         #     iter_loss.reset()
 
     # Visualize results periodically (epochs)
-    draw_freq = 3
+    draw_freq = 1
     if (draw_freq == 1) or (epoch % draw_freq == 0):
-        visualize_batch(inputs, preds, targets) # To save pass this: os.path.join(globals.LOG_DIR, 'train_e{}.png'.format(epoch))
+        image_name = globals.ARGS.outputfolder + "train_" + str(epoch)
+        visualize_trio(inputs[0], preds[0], targets[0], paths[0], image_name)
 
     # Return the average loss of all batches in this epoch
     return train_loss.avg, psnr_val.avg
@@ -101,7 +102,7 @@ def test(test_loader, net, device, get_mse_loss):
         preds = None
         targets = None
 
-        for iteri, (inputs, targets) in enumerate(test_loader, 1):
+        for iteri, (inputs, targets, _) in enumerate(test_loader, 1): # Ignoring 3rd element of tuple which is path of the image(s)
             inputs, targets = inputs.to(device), targets.to(device)
 
             preds = net(inputs)
@@ -127,10 +128,10 @@ def main():
         # Check if output folder name is provided from console, if not create a default name
         if not output_folder_name:
             output_folder_name = create_output_folder_name()
-            globals.ARGS.outputfolder = output_folder_name
 
         # Output folder path
         subfolder = output_root + output_folder_name + "/"
+        globals.ARGS.outputfolder = subfolder
 
         # Check if output_folder_name exists, if not create one, otherwise abort
         if not os.path.exists(subfolder):
@@ -143,7 +144,7 @@ def main():
         show_current_config()
 
         # Saves parameter settings to a file under subfolder directory
-        write_current_config(subfolder)
+        # write_current_config(subfolder)
 
         # Construct network
         torch.manual_seed(5)

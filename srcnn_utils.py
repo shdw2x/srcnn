@@ -72,11 +72,15 @@ class ImageFolder(torchvision.datasets.ImageFolder):
             tuple: (grayscale_image, color_image) where grayscale_image is the decolorized version of the color_image.
         """
         rgb_image, _ = super(ImageFolder, self).__getitem__(index) # ImageFolder.__getitem__: returns PIL object in RGB mode (from docs)
+
+        # Getting the path of each image
+        path = self.imgs[index][0]
+
         y, cb, cr = rgb_image.convert('YCbCr').split()
         target = modulation_crop(y, globals.ARGS.scalefactor)
         y_downscaled = bicubic_interpolation(target, 1/globals.ARGS.scalefactor)
         input = bicubic_interpolation(y_downscaled, globals.ARGS.scalefactor) # y_upscaled
-        return self.to_tensor(input), self.to_tensor(target)
+        return self.to_tensor(input), self.to_tensor(target), path
 
 # Function to read dataset
 def get_loaders(device, **kwargs):
@@ -96,20 +100,25 @@ def get_loaders(device, **kwargs):
         loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0)
     return loaders
 
-def visualize_batch(inputs, preds, targets, save_path=''):
-    inputs = inputs.cpu()
-    preds = preds.cpu()
-    targets = targets.cpu()
+def visualize_trio(input, pred, target, path, save_path=''):
+    trio = [input.cpu(), pred.cpu(), target.cpu()]
+
+    plt.rcParams["figure.figsize"] = [12.0, 8.0]
     plt.clf()
-    bs = inputs.shape[0] if inputs.shape[0] < 5 else 5
-    for j in range(bs):
-        plt.subplot(3, bs, j+1)
-        assert(inputs[j].shape[0]==1)
-        tensorshow(inputs[j], cmap='gray')
-        plt.subplot(3, bs, bs+j+1)
-        tensorshow(preds[j])
-        plt.subplot(3, bs, 2*bs+j+1)
-        tensorshow(targets[j])
+
+    titles = globals.TITLE
+    plt.suptitle(path)
+
+    # Draws input-pred-target plot
+    for i in range(len(trio)):
+        plt.subplot(1, 3, i+1)
+        tensorshow(trio[i])
+        plt.title(titles[i])
+        plt.axis('off')
+
+    # Subplot Adjust
+    plt.subplots_adjust(wspace=0.35)
+
     if save_path is not '':
         plt.savefig(save_path)
     else:
