@@ -44,6 +44,8 @@ def convert_positive_float(value):
 
 def get_pad_count(f):
     """Pad count for convolutional layer when stride is one"""
+    # Full formula: ((W - F * 2P) / S) + 1 = W
+    # W = input width, F = filter size, P = padding for one side only, S = stride (in this case, S=1)
     return (f-1) / 2
 
 def group_arg_list_size_check(args):
@@ -55,8 +57,8 @@ def group_arg_list_size_check(args):
     len_lr = len(args.learnrates)
     
     try:
-        assert len_layer == len_ks, "Layer count ({}) does not match with kernel sizes ({})".format(len_layer, len_ks)
-        assert len_layer == len_kc, "Layer count ({}) does not match with kernel counts ({})".format(len_layer, len_kc)
+        assert len_layer == len_ks, "Layer count ({}) does not match with number of elements in the kernel sizes list ({})".format(len_layer, len_ks)
+        assert len_layer == len_kc, "Layer count ({}) does not match with number of elements in the kernel counts list ({})".format(len_layer, len_kc)
         assert len_layer >= len_rp, "Layer count ({}) is smaller than the number of relu positions given ({})".format(len_layer, len_rp)
         assert len_layer == len_lr, "Layer count ({}) does not match with learning rates ({})".format(len_layer, len_lr)
 

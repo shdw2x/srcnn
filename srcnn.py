@@ -9,7 +9,8 @@ from srcnn_utils import *
 # SRCNN
 class SRNET(nn.Module):
     def __init__(self):
-        super(SRNET, self).__init__() #TODO: Search super(with parameters)
+        # Base class initialization
+        super(SRNET, self).__init__() #TODO: Search super (with parameters)
 
         self.layers = []
         calculate_padding = lambda f: int(arg_helper.get_pad_count(f))
@@ -19,6 +20,7 @@ class SRNET(nn.Module):
         kernel_size = globals.ARGS.kernelsizes[0]
         self.layers.append(nn.Conv2d(in_channels=1, out_channels=globals.ARGS.kernelcounts[0], 
                                      kernel_size=kernel_size, padding=calculate_padding(kernel_size), bias=True))
+
         # Adding remaining convolutional layers
         for i in range(1, globals.ARGS.convlayers):
             kernel_size = globals.ARGS.kernelsizes[i]
@@ -53,6 +55,7 @@ class AverageMeter(object):
 
 # Training for one epoch
 def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
+    # PyTorch's own optimization for training
     net.train()
     
     train_loss = AverageMeter() # Keep training loss for the entire epoch
@@ -82,7 +85,8 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
         #     print('- Training: [E: %d, I: %3d] Loss: %.4f' % (epoch, iteri, iter_loss.avg))
         #     iter_loss.reset()
 
-    # Visualize results periodically (epochs)
+    # Visualize and save image results (input, pred, target) periodically according to frequency value (in epochs)
+    # e.g. draw_freq = k => draw every kth epoch
     draw_freq = 1
     if (draw_freq == 1) or (epoch % draw_freq == 0):
         image_name = globals.ARGS.outputfolder + "train_" + str(epoch)
@@ -144,10 +148,10 @@ def main():
         show_current_config()
 
         # Saves parameter settings to a file under subfolder directory
-        # write_current_config(subfolder)
+        #write_current_config(subfolder)
 
         # Construct network
-        torch.manual_seed(5)
+        torch.manual_seed(5) # seed is used for pseudo random initialization of network parameters (weights and biases)
         device = torch.device(globals.DEVICES[globals.ARGS.nogpu])
         print('Device: ' + str(device))
         net = SRNET().to(device=device)
@@ -157,7 +161,8 @@ def main():
 
         # Assume N convolutional layers with bias, params_list: [W0, B0, W1, B1,... WN, BN]
         params_list = list(net.parameters())
-        # groups: [{'params': (W0, B0), 'lr': lr0},... {'params': (WN, BN), 'lr': lrN}]
+
+        # Before the loop, groups: []
         groups = []
         for i in range(0, len(params_list), 2): # 0, 2... N
             # Convolutional layer-k: (Wk, Bk), params_list[i]: Wk, params_list[i+1]: Bk
@@ -170,6 +175,8 @@ def main():
             params['params'] = weight_bias_pair
             params["lr"] = lr
             groups.append(params)
+        # After the loop, groups: [{'params': (W0, B0), 'lr': lr0},... 
+        #                          {'params': (WN, BN), 'lr': lrN}]
 
         # Optimizer: Stochastic Gradient Descend with initial learning rate
         optimizer = optim.SGD(groups, lr=1e-05) # Default lr (if unspecified) is 1e-05
@@ -197,18 +204,25 @@ def main():
             # Initialization
             train_loader = loaders['train']
             val_loader = loaders['validation']
-            try:
-                MAX_EPOCH = 101
-                for epoch in range(1, MAX_EPOCH):
-                    # Train over full dataset (1 epoch)
-                    train_loss, train_psnr = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
-                    print('* Training loss for current epoch: %.4f' % train_loss)
-                    print('* Training PSNR for current epoch: %.4f' % train_psnr)
+            csv_line_template = "{},{},{},{}\n"
 
-                    # Validation over validation set
-                    val_loss, val_psnr = test(val_loader, net, device, get_mse_loss)
-                    print('* Validation loss for current epoch: %.4f' % val_loss)
-                    print('* Validation PSNR for current epoch: %.4f' % val_psnr)
+            try:
+                with open(subfolder + "train_val_loss_psnr.csv", "w+") as file:
+                    file.write(csv_line_template.format("train_loss", "val_loss", "train_psnr", "val_psnr"))
+                    MAX_EPOCH = 101
+                    for epoch in range(1, MAX_EPOCH):
+                        # Train over full dataset (1 epoch)
+                        train_loss, train_psnr = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
+                        print('* Training loss for current epoch: %.4f' % train_loss)
+                        print('* Training PSNR for current epoch: %.4f' % train_psnr)
+
+                        # Validation over validation set
+                        val_loss, val_psnr = test(val_loader, net, device, get_mse_loss)
+                        print('* Validation loss for current epoch: %.4f' % val_loss)
+                        print('* Validation PSNR for current epoch: %.4f' % val_psnr)
+
+                        file.write(csv_line_template.format(train_loss, val_loss, train_psnr, val_psnr))
+
             except KeyboardInterrupt:
                 print("\nKeyboard interrupt, stoping execution...\n")
                 
