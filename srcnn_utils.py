@@ -14,13 +14,16 @@ import torchvision.transforms as transforms
 
 import globals
 
+def save_checkpoint(net, path, epoch):
+    filename = 'checkpoint_epoch_{}.pt'.format(epoch)
+    fullpath = os.path.join(path, filename)
+    torch.save(net.state_dict(), fullpath)
+    print("Network state was saved on checkpoint: {}.".format(fullpath))
 
-"""
-#TODO: 
-Loss plot
-PSNR plot
-PSNR for current epoch: 62.0725 (wrong value)
-"""
+def load_checkpoint(net, path):
+    loaded = torch.load(path)
+    net.load_state_dict(loaded)
+    print("Network state was loaded from checkpoint: {}".format(path))
 
 def get_current_config():
     """Return a string indicating current parameter configuration"""
@@ -72,11 +75,13 @@ def bicubic_interpolation(image, scale_factor):
     scaled_image = image.resize(new_size, Image.BICUBIC)
     return scaled_image
 
-def compute_psnr(mse_loss, max_val=255):
+def compute_psnr(mse_loss, max_val=1): # max_val is assumed as 1 because of normalization, pass as argument if needed
     return 20.0 * np.log10(max_val/mse_loss)
 
-norm_vfunc = np.vectorize(lambda x: (2*x)/255 - 1)
-denorm_vfunc = np.vectorize(lambda x: (255*x + 255) / 2)
+#region Remove if not used later on
+# norm_vfunc = np.vectorize(lambda x: (2*x)/255 - 1)
+# denorm_vfunc = np.vectorize(lambda x: (255*x + 255) / 2)
+#endregion
 
 def modulation_crop(img, scale_factor):
     """Crop image by a few pixels to make the resolution a multiple of scale_factor"""

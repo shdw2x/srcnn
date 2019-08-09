@@ -26,7 +26,8 @@ def draw_plot(path, **kwargs):
 def plot_data(train_data, val_data, epochs, ylabel):
     plt.plot(epochs, train_data, "o-")
     plt.plot(epochs, val_data, "o-")
-    plt.xticks(epochs)
+    xticks = [0, *epochs] # Expand list and merge with 0 in a new list
+    plt.xticks(xticks[::5]) # Put a tick at every 5th element
     plt.legend(["Train", "Validation"], loc='upper left')
     plt.title(TITLE_FORMAT.format(ylabel))
     plt.xlabel("Epoch")

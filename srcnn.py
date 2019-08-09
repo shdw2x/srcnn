@@ -60,9 +60,9 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
     
     train_loss = AverageMeter() # Keep training loss for the entire epoch
     psnr_val = AverageMeter()
-    # iter_loss = AverageMeter() # Keep training loss for each n iteration
 
-    print_freq = 100 # Printing frequency in terms of iterations for net loss
+    print_message_frequency = 500 # print_message_frequency = k => draw every kth iteration
+    draw_image_frequency = 5 # e.g. draw_image_frequency = k => draw every kth epoch
     inputs = None
     preds = None
     targets = None
@@ -70,33 +70,31 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
     # For each batch (iteration)
     for iteri, (inputs, targets, paths) in enumerate(train_loader, 1):        
         inputs, targets = inputs.to(device), targets.to(device)
-        
         optimizer.zero_grad() # Clear gradients
         preds = net(inputs) # Forward propagation
-        mse_loss = get_mse_loss(preds, targets) # get_mse_loss(y_hat, ground_truth) #TODO: loss calculation only for central pixel (check the paper)
-        psnr_val.update(compute_psnr(mse_loss.item())) #TODO per image PSNR calculation
-        mse_loss.backward() # Backpropagation
+        rmse_loss = torch.sqrt(get_mse_loss(preds, targets)) # get_mse_loss(y_hat, ground_truth)
+        psnr_val.update(compute_psnr(rmse_loss.item()))
+        rmse_loss.backward() # Backpropagation
         optimizer.step()
-        # iter_loss.update(mse_loss.item()) # TODO: check
-        train_loss.update(mse_loss.item()) # TODO: check
+        train_loss.update(rmse_loss.item()) # TODO: check
 
-        # Print every print_freq mini-batches
-        # if (not iteri % print_freq):
-        #     print('- Training: [E: %d, I: %3d] Loss: %.4f' % (epoch, iteri, iter_loss.avg))
-        #     iter_loss.reset()
+        # Print every print_message_frequency mini-batches
+        if (not iteri % print_message_frequency):
+            print('- Training: [Epoch: %d, Iteration: %3d] Loss: %.4f PSNR: %.4f' % (epoch, iteri, rmse_loss.item(), psnr_val.loss))
 
-    # Visualize and save image results (input, pred, target) periodically according to frequency value (in epochs)
-    # e.g. draw_freq = k => draw every kth epoch
-    draw_freq = 1
-    if (draw_freq == 1) or (epoch % draw_freq == 0):
-        image_name = globals.ARGS.outputfolder + "train_" + str(epoch)
-        visualize_trio(inputs[0], preds[0], targets[0], paths[0], image_name)
+        # Visualize and save image results (input, pred, target) periodically according to frequency value (in epochs)
+        if (draw_image_frequency == 1) or (epoch % draw_image_frequency == 0):
+            if not globals.SAVED_TRAIN_PIC:
+                globals.SAVED_TRAIN_PIC = paths[0]
+            if globals.SAVED_TRAIN_PIC == paths[0]:
+                image_name = globals.ARGS.outputfolder + "train_" + str(epoch)
+                visualize_trio(inputs[0], preds[0], targets[0], paths[0], image_name)
 
     # Return the average loss of all batches in this epoch
     return train_loss.avg, psnr_val.avg
 
 # Testing or Validation
-def test(test_loader, net, device, get_mse_loss):
+def test(test_loader, net, device, get_mse_loss, epoch):
     net.eval()
 
     with torch.no_grad():
@@ -105,14 +103,27 @@ def test(test_loader, net, device, get_mse_loss):
         inputs = None
         preds = None
         targets = None
+        print_message_frequency = 500 # print_message_frequency = k => draw every kth iteration
+        draw_image_frequency = 1 # e.g. draw_image_frequency = k => draw every kth epoch
 
-        for iteri, (inputs, targets, _) in enumerate(test_loader, 1): # Ignoring 3rd element of tuple which is path of the image(s)
+        for iteri, (inputs, targets, paths) in enumerate(test_loader, 1): # Ignoring 3rd element of tuple which is path of the image(s)
             inputs, targets = inputs.to(device), targets.to(device)
-
             preds = net(inputs)
-            mse_loss = get_mse_loss(preds, targets)
-            psnr_val.update(compute_psnr(mse_loss.item())) #TODO per image PSNR calculation
-            test_loss.update(mse_loss.item())
+            rmse_loss = torch.sqrt(get_mse_loss(preds, targets)) # get_mse_loss(y_hat, ground_truth)
+            psnr_val.update(compute_psnr(rmse_loss.item()))
+            test_loss.update(rmse_loss.item())
+
+            # Print every print_message_frequency mini-batches
+            if (not iteri % print_message_frequency):
+                print('- Validation: [Epoch: %d, Iteration: %3d] Loss: %.4f PSNR: %.4f' % (epoch, iteri, rmse_loss.item(), psnr_val.loss))
+
+            # Visualize and save image results (input, pred, target) periodically according to frequency value (in epochs)
+            if (draw_image_frequency == 1) or (epoch % draw_image_frequency == 0):
+                if not globals.SAVED_VAL_PIC:
+                    globals.SAVED_VAL_PIC = paths[0]
+                if globals.SAVED_VAL_PIC == paths[0]:
+                    image_name = globals.ARGS.outputfolder + "val_" + str(epoch)
+                    visualize_trio(inputs[0], preds[0], targets[0], paths[0], image_name)
 
     return test_loss.avg, psnr_val.avg
 
@@ -197,7 +208,7 @@ def main():
 
         # Get loaders as dict
         loaders = get_loaders(device, load_train=run_train, load_test=run_test)
-
+        print("Images are loaded.")
         # Training mode
         if (run_train):
             print("Training started.")
@@ -213,15 +224,17 @@ def main():
                     for epoch in range(1, MAX_EPOCH):
                         # Train over full dataset (1 epoch)
                         train_loss, train_psnr = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
+                        print()
                         print('* Training loss for current epoch: %.4f' % train_loss)
                         print('* Training PSNR for current epoch: %.4f' % train_psnr)
 
                         # Validation over validation set
-                        val_loss, val_psnr = test(val_loader, net, device, get_mse_loss)
+                        val_loss, val_psnr = test(val_loader, net, device, get_mse_loss, epoch)
                         print('* Validation loss for current epoch: %.4f' % val_loss)
                         print('* Validation PSNR for current epoch: %.4f' % val_psnr)
 
                         file.write(csv_line_template.format(train_loss, val_loss, train_psnr, val_psnr))
+                        save_checkpoint(net, globals.ARGS.outputfolder, epoch)
 
             except KeyboardInterrupt:
                 print("\nKeyboard interrupt, stoping execution...\n")
