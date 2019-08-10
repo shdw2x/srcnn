@@ -18,12 +18,12 @@ def save_checkpoint(net, path, epoch):
     filename = 'checkpoint_epoch_{}.pt'.format(epoch)
     fullpath = os.path.join(path, filename)
     torch.save(net.state_dict(), fullpath)
-    print("Network state was saved on checkpoint: {}.".format(fullpath))
+    print("* Network state was saved on checkpoint: {}.".format(fullpath))
 
 def load_checkpoint(net, path):
     loaded = torch.load(path)
     net.load_state_dict(loaded)
-    print("Network state was loaded from checkpoint: {}".format(path))
+    print("* Network state was loaded from checkpoint: {}".format(path))
 
 def get_current_config():
     """Return a string indicating current parameter configuration"""
@@ -91,21 +91,23 @@ def modulation_crop(img, scale_factor):
     return cropped_img
 
 def tensorshow(tensor, cmap=None):
-    img = transforms.functional.to_pil_image(tensor)
+    img = from_tensor_to_PIL(tensor)
     if cmap is not None:
         plt.imshow(img, cmap=cmap)
     else:
         plt.imshow(img)
 
-#TODO: Cb, Cr need to be added later
-class ImageFolder(torchvision.datasets.ImageFolder):
+def from_tensor_to_PIL(tensor):
+    return transforms.functional.to_pil_image(tensor)
+
+def from_PIL_to_tensor(image):
+    return transforms.functional.to_tensor(image) # to_tensor: From PIL to Tensor, normalizes values automatically (from docs)
+    
+class TrainValidationImageTransformer(torchvision.datasets.ImageFolder):
     """A version of the ImageFolder dataset class, customized for the super-resolution task"""
 
     def __init__(self, root):
-        super(ImageFolder, self).__init__(root, transform=None)
-
-    def to_tensor(self, img):
-        return transforms.functional.to_tensor(img) # to_tensor: From PIL to Tensor, normalizes values automatically (from docs)
+        super(TrainValidationImageTransformer, self).__init__(root, transform=None)
 
     def __getitem__(self, index):
         """
@@ -115,7 +117,7 @@ class ImageFolder(torchvision.datasets.ImageFolder):
         Returns:
             tuple: (grayscale_image, color_image) where grayscale_image is the decolorized version of the color_image.
         """
-        rgb_image, _ = super(ImageFolder, self).__getitem__(index) # ImageFolder.__getitem__: returns PIL object in RGB mode (from docs)
+        rgb_image, _ = super(TrainValidationImageTransformer, self).__getitem__(index) # ImageFolder.__getitem__: returns PIL object in RGB mode (from docs)
 
         # Getting the path of each image
         path = self.imgs[index][0]
@@ -127,7 +129,32 @@ class ImageFolder(torchvision.datasets.ImageFolder):
         target = modulation_crop(y, scale_factor)
         y_downscaled = bicubic_interpolation(target, 1/scale_factor)
         input = bicubic_interpolation(y_downscaled, scale_factor) # input image is now in the same dimension as target
-        return self.to_tensor(input), self.to_tensor(target), path
+        return from_PIL_to_tensor(input), from_PIL_to_tensor(target), path
+
+class TestImageTransformer(torchvision.datasets.ImageFolder):
+    """A version of the ImageFolder dataset class, customized for the super-resolution task"""
+
+    def __init__(self, root):
+        super(TestImageTransformer, self).__init__(root, transform=None)
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (grayscale_image, color_image) where grayscale_image is the decolorized version of the color_image.
+        """
+        rgb_image, _ = super(TestImageTransformer, self).__getitem__(index) # ImageFolder.__getitem__: returns PIL object in RGB mode (from docs)
+
+        # Getting the path of each image
+        path = self.imgs[index][0]
+
+        y, cb, cr = rgb_image.convert('YCbCr').split()
+        scale_factor = globals.ARGS.scalefactor
+
+        input = bicubic_interpolation(y, scale_factor)
+        return from_PIL_to_tensor(input), path
 
 # Function to read dataset
 def get_loaders(device, **kwargs):
@@ -138,14 +165,21 @@ def get_loaders(device, **kwargs):
     loaders = {}
     
     if load_train:
-        train_set = ImageFolder(root=data_root + 'train')
+        train_set = TrainValidationImageTransformer(root=data_root + 'train')
         loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
-        val_set = ImageFolder(root=data_root + 'validation')
+        val_set = TrainValidationImageTransformer(root=data_root + 'validation')
         loaders['validation'] = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
     if load_test:
-        test_set = ImageFolder(root=data_root + 'test')
-        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0)
+        test_set = TestImageTransformer(root=data_root + 'test')
+        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False, num_workers=0)
     return loaders
+
+def console_log(mode, epoch, iteri, loss, psnr):
+    print_message_frequency = globals.PRINT_MESSAGE_FREQUENCY
+    
+    # Print every print_message_frequency mini-batches
+    if (not iteri % print_message_frequency):
+        print('- %s: [Epoch: %d, Iteration: %3d] Loss: %.4f PSNR: %.4f' % (mode, epoch, iteri, loss, psnr))
 
 def visualize_trio(input, pred, target, path, save_path=''):
     trio = [input.cpu(), pred.cpu(), target.cpu()]
@@ -170,3 +204,14 @@ def visualize_trio(input, pred, target, path, save_path=''):
         plt.savefig(save_path)
     else:
         plt.show(block=False)
+
+def save_visualized_image_trio(mode, epoch, iteri, loss, psnr, input, pred, target, path):
+    draw_image_frequency = globals.DRAW_IMAGE_FREQUENCY
+
+    # Visualize and save image results (input, pred, target) periodically according to frequency value (in epochs)
+    if (draw_image_frequency == 1) or (epoch % draw_image_frequency == 0):
+        if not globals.SAVED_PICS[mode]:
+            globals.SAVED_PICS[mode] = path
+        if globals.SAVED_PICS[mode] == path:
+            image_name = globals.ARGS.outputfolder + "{}_{}".format(mode, epoch)
+            visualize_trio(input, pred, target, path, image_name)
