@@ -139,8 +139,11 @@ class TrainValidationImageTransformer(torchvision.datasets.ImageFolder):
         # Before downscaling, remove a few pixel from the border to prevent floating point resolutions (i.e. 253px -> 250px -> 125px -> 250px)
         target = modulation_crop(y, scale_factor)
         y_downscaled = bicubic_interpolation(target, 1/scale_factor)
-        input = bicubic_interpolation(y_downscaled, scale_factor) # input image is now in the same dimension as target
-        return from_PIL_to_tensor(input), from_PIL_to_tensor(target), path
+
+        y = from_PIL_to_tensor(bicubic_interpolation(y_downscaled, scale_factor)) # input image is now in the same dimension as target
+        target = from_PIL_to_tensor(target)
+        
+        return y, target, path
 
 class TestImageTransformer(torchvision.datasets.ImageFolder):
     """A version of the ImageFolder dataset class, customized for the super-resolution task"""
@@ -257,6 +260,7 @@ def tensorshow(tensor, cmap=None):
         plt.imshow(img)
 
 def visualize_trio(input, pred, target, path, save_path=''):
+    """Plots input, prediction, and target images side by side"""
     titles = globals.TITLE
 
     trio = [input.cpu(), pred.cpu(), target.cpu()]
@@ -281,6 +285,7 @@ def visualize_trio(input, pred, target, path, save_path=''):
         plt.show(block=False)
 
 def save_visualized_image_trio(mode, epoch, iteri, loss, psnr, input, pred, target, path):
+    """Saves the input, prediction, and target images while the training script is running"""
     draw_image_frequency = globals.DRAW_IMAGE_FREQUENCY
 
     # Visualize and save image results (input, pred, target) periodically according to frequency value (in epochs)
@@ -290,6 +295,14 @@ def save_visualized_image_trio(mode, epoch, iteri, loss, psnr, input, pred, targ
         if globals.SAVED_PICS[mode] == path:
             image_name = globals.ARGS.outputfolder + "{}_{}".format(mode, epoch)
             visualize_trio(input, pred, target, path, image_name)
+
+def save_output_image(path, y_tensor, cb_tensor, cr_tensor):
+    """Saves the image produced by test script"""
+    y = from_tensor_to_PIL(y_tensor.cpu())
+    cb = from_tensor_to_PIL(cb_tensor.cpu())
+    cr = from_tensor_to_PIL(cr_tensor.cpu())
+    output_image = Image.merge('YCbCr', (y, cb, cr))
+    output_image.save(path)
 #endregion
 
 def get_pad_count(f):

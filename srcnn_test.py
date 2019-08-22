@@ -4,13 +4,6 @@ import arg_helper_test
 from srcnn import SRNET
 from srcnn_utils import *
 
-def save_output_image(path, y_tensor, cb_tensor, cr_tensor):
-    y = from_tensor_to_PIL(y_tensor.cpu())
-    cb = from_tensor_to_PIL(cb_tensor.cpu())
-    cr = from_tensor_to_PIL(cr_tensor.cpu())
-    output_image = Image.merge('YCbCr', (y, cb, cr))
-    output_image.save(path)
-
 # Testing
 def test(test_loader, net, device):
     net.eval()
