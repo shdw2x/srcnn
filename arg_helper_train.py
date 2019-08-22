@@ -1,30 +1,5 @@
-import argparse
-import sys
-
-# Custom format for arg Help print
-class CustomFormatter(argparse.HelpFormatter):
-    def __init__(self,
-                 prog,
-                 indent_increment=2,
-                 max_help_position=100, # Modified
-                 width=100):
-        super().__init__(prog, indent_increment, max_help_position, width)
-
-    def _format_action_invocation(self, action):
-        if not action.option_strings:
-            metavar, = self._metavar_formatter(action, action.dest)(1)
-            return metavar
-        else:
-            parts = []
-            if action.nargs == 0:
-                parts.extend(action.option_strings)
-            else:
-                default = action.dest.upper()
-                args_string = self._format_args(action, default)
-                for option_string in action.option_strings:
-                    parts.append('%s' % option_string)
-                parts[-1] += ' %s' % args_string
-            return ', '.join(parts)
+from arg_help_formatter import *
+from srcnn_utils import get_pad_count
 
 def convert_positive_int(value):
     try:
@@ -41,12 +16,6 @@ def convert_positive_float(value):
     except Exception:
         raise argparse.ArgumentTypeError("Positive float is expected but got: {}".format(value))
     return value
-
-def get_pad_count(f):
-    """Pad count for convolutional layer when stride is one"""
-    # Full formula: ((W - F * 2P) / S) + 1 = W
-    # W = input width, F = filter size, P = padding for one side only, S = stride (in this case, S=1)
-    return (f-1) / 2
 
 def group_arg_list_size_check(args):
 
@@ -87,8 +56,8 @@ def group_arg_list_size_check(args):
 
 # Handles cmd args
 def arg_handler():
-    parser = argparse.ArgumentParser(description='Image Super Resolution with PyTorch', 
-                                     formatter_class=CustomFormatter, 
+    parser = argparse.ArgumentParser(description='Image Super Resolution with PyTorch: [Train]', 
+                                     formatter_class=ArgHelpFormatter, 
                                      add_help=False)
     # Optional flags
     parser.add_argument("-h", "--help", help="Help message", action="store_true")
@@ -97,19 +66,6 @@ def arg_handler():
     # Required flags
     enable_exec = ("-h" not in sys.argv)
     group = parser.add_argument_group(title='required arguments')
-    
-    group.add_argument("-p", "--pipe",  
-                       help="Specify pipeline execution mode (default: train)", 
-                       type=str,
-                       choices=['train', 'test', 'full'], 
-                       default="train")
-
-    group.add_argument("-cs", "--colorspace",
-                       help="Specify color space for train image (default: ycbcr)", 
-                       type=str,
-                       metavar="CSPACE",
-                       choices=['rgb', 'ycbcr'],
-                       default="ycbcr")
 
     group.add_argument("-sf", "--scalefactor",
                        help="Specify scale factor for upsampling (default: 2)",

@@ -15,27 +15,32 @@ import globals
 
 #region Checkpoint-related Methods
 def save_checkpoint(net, optimizer, loss, epoch):
+    path = globals.ARGS.outputfolder # outputs/output_folder_name
+    scale_factor = globals.ARGS.scalefactor
+
     filename = 'checkpoint_epoch_{}.pt'.format(epoch)
-    path = globals.ARGS.outputfolder
     fullpath = os.path.join(path, filename)
     checkpoint = {
                   'network': net, # network = model = structure, includes network parameters
                   'optimizer': optimizer,
                   'loss': loss,
-                  'epoch': epoch
+                  'epoch': epoch,
+                  'scale_factor': scale_factor
                  }
     torch.save(checkpoint, fullpath)
     print("* Network state was saved on checkpoint: {}.".format(fullpath))
 
-def load_checkpoint(path):
+def load_checkpoint():
+    path = globals.ARGS.checkpoint # outputs/../checkpoint_epoch_X.pt
+
     checkpoint = torch.load(path)
-    net, optimizer, loss, epoch = checkpoint.values()
+    net, optimizer, loss, epoch, scale_factor = checkpoint.values()
     override_config(net, optimizer)
-    return (net, optimizer, loss, epoch)
+    return (net, optimizer, loss, epoch, scale_factor)
 #endregion
 
 #region Output Folder Construction Methods
-def construct_output_folder():
+def construct_output_folder(execution_mode):
     output_root = globals.OUTPUT_ROOT # outputs/
     output_folder_name = globals.ARGS.outputfolder # outputs/output_folder_name
 
@@ -45,7 +50,7 @@ def construct_output_folder():
 
     # Check if output folder name is provided from console, if not create a default name
     if not output_folder_name:
-        output_folder_name = create_output_folder_name()
+        output_folder_name = create_output_folder_name(execution_mode)
 
     # Output folder path
     output_folder_path = output_root + output_folder_name + "/"
@@ -60,22 +65,23 @@ def construct_output_folder():
 
     return output_folder_path
 
-def create_output_folder_name():
+def create_output_folder_name(execution_mode):
     """Returns the name of the folder"""
     output_root = globals.OUTPUT_ROOT
+
     folder_names = os.listdir(output_root)
 
-    # Search for folder names including "exp"
-    exp_folder_names = list(filter(lambda folder_name: "exp" in folder_name, folder_names))
+    # Filter folder names with execution_mode (i.e. "train" or "test")
+    filtered_folder_names = list(filter(lambda folder_name: execution_mode in folder_name, folder_names))
 
-    if not exp_folder_names:
-        return "exp_1"
+    if not filtered_folder_names:
+        return execution_mode + "_1"
         
     # Sort folder names with respect to numbers appended
-    exp_folder_names.sort(key=lambda f: int(str().join(filter(str.isdigit, f))))
+    filtered_folder_names.sort(key=lambda f: int(str().join(filter(str.isdigit, f))))
 
     # Get the name of the folder with highest number
-    recent_folder_name = exp_folder_names[-1]
+    recent_folder_name = filtered_folder_names[-1]
 
     # Partition the name into two ("exp", "Digits")
     parts = recent_folder_name.split('_')
@@ -158,26 +164,34 @@ class TestImageTransformer(torchvision.datasets.ImageFolder):
         y, cb, cr = rgb_image.convert('YCbCr').split()
         scale_factor = globals.ARGS.scalefactor
 
-        input = bicubic_interpolation(y, scale_factor)
-        return from_PIL_to_tensor(input), path
+        y = from_PIL_to_tensor(bicubic_interpolation(y, scale_factor))
+        cb = from_PIL_to_tensor(bicubic_interpolation(cb, scale_factor))
+        cr = from_PIL_to_tensor(bicubic_interpolation(cr, scale_factor))
 
-def get_loaders(device, **kwargs):
+        return y, cb, cr, path
+
+def get_train_loaders():
     """Function to read dataset"""
-    load_train = kwargs.get('load_train', False) 
-    load_test = kwargs.get('load_test', False)
     batch_size = globals.ARGS.batchsize
     data_root = globals.DATA_ROOT
+
     loaders = {}
-    
-    if load_train:
-        train_set = TrainValidationImageTransformer(root=data_root + 'train')
-        loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
-        val_set = TrainValidationImageTransformer(root=data_root + 'validation')
-        loaders['validation'] = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
-    if load_test:
-        test_set = TestImageTransformer(root=data_root + 'test')
-        loaders['test'] = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False, num_workers=0)
+    train_set = TrainValidationImageTransformer(root=data_root + 'train')
+    loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_set = TrainValidationImageTransformer(root=data_root + 'validation')
+    loaders['validation'] = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
+
     return loaders
+
+def get_test_loader():
+    data_root = globals.DATA_ROOT
+    
+    loader = {}
+    test_set = TestImageTransformer(root=data_root + 'test')
+    loader['test'] = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False, num_workers=0)
+
+    return loader
+
 #endregion
 
 #region Configuration-related Methods
@@ -219,13 +233,14 @@ def get_current_config():
         lines += "- {}: {}\n".format(key, item)
     return (message + separator + lines + separator)
 
-def show_current_config():
+def show_current_config(execution_mode):
     """Print current parameter configuration"""
     print(get_current_config())
     checkpoint_path = globals.ARGS.checkpoint
     if checkpoint_path:
         print("* Network state was loaded from checkpoint: {}".format(checkpoint_path))
-        print("* WARNING: Some hyperparameters might be overridden.\n")
+        if execution_mode == "train":
+            print("* WARNING: Some hyperparameters might be overridden.\n")
 
 def write_current_config(path):
     with open(path + "network_config.txt", 'w+') as file:
@@ -242,12 +257,12 @@ def tensorshow(tensor, cmap=None):
         plt.imshow(img)
 
 def visualize_trio(input, pred, target, path, save_path=''):
+    titles = globals.TITLE
+
     trio = [input.cpu(), pred.cpu(), target.cpu()]
 
     plt.rcParams["figure.figsize"] = [12.0, 8.0]
     plt.clf()
-
-    titles = globals.TITLE
     plt.suptitle(path)
 
     # Draws input-pred-target plot
@@ -276,6 +291,12 @@ def save_visualized_image_trio(mode, epoch, iteri, loss, psnr, input, pred, targ
             image_name = globals.ARGS.outputfolder + "{}_{}".format(mode, epoch)
             visualize_trio(input, pred, target, path, image_name)
 #endregion
+
+def get_pad_count(f):
+    """Pad count for convolutional layer when stride is one"""
+    # Full formula: ((W - F * 2P) / S) + 1 = W
+    # W = input width, F = filter size, P = padding for one side only, S = stride (in this case, S=1)
+    return (f-1) / 2
 
 def compute_psnr(mse_loss, max_val=1): # max_val is assumed as 1 because of normalization, pass as argument if needed
     return 20.0 * np.log10(max_val/mse_loss)

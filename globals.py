@@ -1,6 +1,8 @@
 def initialize():
-    global ARGS, DEVICES, VISUALIZE, DATA_ROOT, OUTPUT_ROOT, TITLE, SAVED_PICS, PRINT_MESSAGE_FREQUENCY, DRAW_IMAGE_FREQUENCY
+    global ARGS, SEED, DEVICES, VISUALIZE, DATA_ROOT, OUTPUT_ROOT, \
+           TITLE, SAVED_PICS, PRINT_MESSAGE_FREQUENCY, DRAW_IMAGE_FREQUENCY
     ARGS = None
+    SEED = 5
     DEVICES = {False: 'cuda', True: 'cpu'}
     # DEVICE_ID = 'cpu' # set to 'cpu' for cpu, 'cuda' / 'cuda:0' or similar for gpu.
     VISUALIZE = False # set True to visualize input, prediction and the output from the last batch
