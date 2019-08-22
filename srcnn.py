@@ -113,7 +113,7 @@ def test(test_loader, net, device):
         for i, (inputs, paths) in enumerate(test_loader, 1):
             inputs = inputs.to(device)
             preds = net(inputs)
-            save_output_image("predicted_image2.jpg", preds.cpu()[0]) # TODO: change when test script is generated
+            save_output_image("predicted_image7.jpg", preds.cpu()[0]) # TODO: change when test script is generated
 
 def main():
     torch.multiprocessing.set_start_method('spawn', force=True)
@@ -121,73 +121,60 @@ def main():
 
     # If required args are parsed properly
     if globals.ARGS:
-        output_root = globals.OUTPUT_ROOT # outputs/
-        output_folder_name = globals.ARGS.outputfolder # outputs/output_folder_name
+        # Construct network
+        torch.manual_seed(5) # seed is used for pseudo random initialization of network parameters (weights and biases)
+        net, get_mse_loss, optimizer, last_epoch = None, None, None, 1
+        # Checking if any checkpoint provided
+        checkpoint_path = globals.ARGS.checkpoint
+        if not checkpoint_path:
+            net = SRNET()
+            # Mean Squared Error
+            get_mse_loss = nn.MSELoss()
 
-        # Check if outputs directory exists, if not create the directory
-        if not os.path.exists(output_root):
-            os.mkdir(output_root)
+            # Assume N convolutional layers with bias, params_list: [W0, B0, W1, B1,... WN, BN]
+            params_list = list(net.parameters())
 
-        # Check if output folder name is provided from console, if not create a default name
-        if not output_folder_name:
-            output_folder_name = create_output_folder_name()
+            # Before the loop, groups: []
+            groups = []
+            for i in range(0, len(params_list), 2): # 0, 2... N
+                # Convolutional layer-k: (Wk, Bk), params_list[i]: Wk, params_list[i+1]: Bk
+                params = {}
+                weight = params_list[i]
+                bias = params_list[i+1]
+                weight_bias_pair = (weight, bias)
+                # Get LR for each layer
+                lr = globals.ARGS.learnrates[i//2]
+                params['params'] = weight_bias_pair
+                params["lr"] = lr
+                groups.append(params)
+            # After the loop, groups: [{'params': (W0, B0), 'lr': lr0},... 
+            #                          {'params': (WN, BN), 'lr': lrN}]
 
-        # Output folder path
-        subfolder = output_root + output_folder_name + "/"
-        globals.ARGS.outputfolder = subfolder
+            # Optimizer: Stochastic Gradient Descend with initial learning rate
+            optimizer = optim.SGD(groups, lr=1e-05) # Default lr (if unspecified) is 1e-05
 
-        # Check if output_folder_name exists, if not create one, otherwise abort
-        if not os.path.exists(subfolder):
-            os.mkdir(subfolder)
         else:
-            print("Directory already exists: {}".format(subfolder))
-            exit(1)
+            try:
+                net, optimizer, get_mse_loss, last_epoch = load_checkpoint(checkpoint_path)
+                last_epoch += 1 # Continue from next epoch
+            except FileNotFoundError:
+                print("Checkpoint could not be found under {}!".format(checkpoint_path))
+                exit(1)
+
+        # Constructing output folder
+        output_folder_path = construct_output_folder()
 
         # Prints parameter settings (user-provided input or default values) given from the console
         show_current_config()
 
-        # Saves parameter settings to a file under subfolder directory
-        write_current_config(subfolder)
-
-        # Construct network
-        torch.manual_seed(5) # seed is used for pseudo random initialization of network parameters (weights and biases)
+        # Saves parameter settings to a file under output_folder_path
+        write_current_config(output_folder_path)
+        
+        # Device: CPU or CUDA
         device = torch.device(globals.DEVICES[globals.ARGS.nogpu])
         print('Device: ' + str(device))
-        net = SRNET().to(device=device)
+        net.to(device=device)
 
-        # Mean Squared Error
-        get_mse_loss = nn.MSELoss()
-
-        # Assume N convolutional layers with bias, params_list: [W0, B0, W1, B1,... WN, BN]
-        params_list = list(net.parameters())
-
-        # Before the loop, groups: []
-        groups = []
-        for i in range(0, len(params_list), 2): # 0, 2... N
-            # Convolutional layer-k: (Wk, Bk), params_list[i]: Wk, params_list[i+1]: Bk
-            params = {}
-            weight = params_list[i]
-            bias = params_list[i+1]
-            weight_bias_pair = (weight, bias)
-            # Get LR for each layer
-            lr = globals.ARGS.learnrates[i//2]
-            params['params'] = weight_bias_pair
-            params["lr"] = lr
-            groups.append(params)
-        # After the loop, groups: [{'params': (W0, B0), 'lr': lr0},... 
-        #                          {'params': (WN, BN), 'lr': lrN}]
-
-        # Optimizer: Stochastic Gradient Descend with initial learning rate
-        optimizer = optim.SGD(groups, lr=1e-05) # Default lr (if unspecified) is 1e-05
-
-        # for group in optimizer.param_groups:
-        #     print(group["params"][0].size()) # weight
-        #     print(group["params"][1].size()) # bias
-        #     print()
-
-        # Learning rate scheduler
-        # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=factor, 
-                                                        #  patience=lr_patience, min_lr=min_lr, verbose=True)
         # Determine pipeline execution
         pipe = globals.ARGS.pipe
         run_full = (pipe == "full")
@@ -196,7 +183,7 @@ def main():
 
         # Get loaders as dict
         loaders = get_loaders(device, load_train=run_train, load_test=run_test)
-        print("Images are loaded.")
+        print("Images loaded.")
         # Training mode
         if (run_train):
             print("Training started.")
@@ -206,10 +193,10 @@ def main():
             csv_line_template = "{},{},{},{}\n"
 
             try:
-                with open(subfolder + "train_val_loss_psnr.csv", "w+") as file:
+                with open(output_folder_path + "train_val_loss_psnr.csv", "w+") as file:
                     file.write(csv_line_template.format("train_loss", "val_loss", "train_psnr", "val_psnr"))
                     MAX_EPOCH = 101
-                    for epoch in range(1, MAX_EPOCH):
+                    for epoch in range(last_epoch, MAX_EPOCH):
                         # Train over full dataset (1 epoch)
                         train_loss, train_psnr = train(train_loader, net, device, get_mse_loss, optimizer, epoch)
                         print('* Training loss for current epoch: %.4f' % train_loss)
@@ -221,7 +208,7 @@ def main():
                         print('* Validation PSNR for current epoch: %.4f' % val_psnr)
 
                         file.write(csv_line_template.format(train_loss, val_loss, train_psnr, val_psnr))
-                        save_checkpoint(net, globals.ARGS.outputfolder, epoch)
+                        save_checkpoint(net, optimizer, get_mse_loss, epoch)
                         print()
 
             except KeyboardInterrupt:
@@ -233,7 +220,7 @@ def main():
         # Testing mode
         elif (run_test):
             #TODO: Create test script!
-            checkpoint_path = "exp_1_epoch_27\checkpoint_epoch_27.pt"
+            checkpoint_path = "outputs\exp_2\checkpoint_epoch_9.pt"
             load_checkpoint(net, checkpoint_path)
             test_loader = loaders['test']
             print("Images are loaded.")

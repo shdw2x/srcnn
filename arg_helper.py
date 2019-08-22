@@ -163,6 +163,12 @@ def arg_handler():
                        metavar="FOLDER",
                        default="")
 
+    group.add_argument("-c", "--checkpoint", 
+                       type=str,
+                       help="Specify checkpoint path (default: '')", 
+                       metavar="PATH",
+                       default="")
+
     args = parser.parse_args()
 
     # Print help if -h is used
