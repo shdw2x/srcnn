@@ -106,6 +106,11 @@ def modulation_crop(img, scale_factor):
     cropped_img = img.crop((0, 0, new_w, new_h))
     return cropped_img
 
+def min_max_normalizer(tensor):
+    tmin = tensor.min()
+    tmax = tensor.max()
+    return (tensor - tmin) / (tmax - tmin)
+
 def from_tensor_to_PIL(tensor):
     return transforms.functional.to_pil_image(tensor)
 
@@ -182,7 +187,7 @@ def get_train_loaders():
     train_set = TrainValidationImageTransformer(root=data_root + 'train')
     loaders['train'] = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
     val_set = TrainValidationImageTransformer(root=data_root + 'validation')
-    loaders['validation'] = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
+    loaders['validation'] = torch.utils.data.DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0)
 
     return loaders
 
@@ -253,6 +258,7 @@ def write_current_config(path):
 
 #region Visualization Methods
 def tensorshow(tensor, cmap=None):
+    tensor = min_max_normalizer(tensor)
     img = from_tensor_to_PIL(tensor)
     if cmap is not None:
         plt.imshow(img, cmap=cmap)
@@ -272,7 +278,7 @@ def visualize_trio(input, pred, target, path, save_path=''):
     # Draws input-pred-target plot
     for i in range(len(trio)):
         plt.subplot(1, 3, i+1)
-        tensorshow(trio[i])
+        tensorshow(trio[i], 'gray')
         plt.title(titles[i])
         plt.axis('off')
 
@@ -298,7 +304,8 @@ def save_visualized_image_trio(mode, epoch, iteri, loss, psnr, input, pred, targ
 
 def save_output_image(path, y_tensor, cb_tensor, cr_tensor):
     """Saves the image produced by test script"""
-    y = from_tensor_to_PIL(y_tensor.cpu())
+    y_tensor = min_max_normalizer(y_tensor.cpu()) # Min-max normalization
+    y = from_tensor_to_PIL(y_tensor)
     cb = from_tensor_to_PIL(cb_tensor.cpu())
     cr = from_tensor_to_PIL(cr_tensor.cpu())
     output_image = Image.merge('YCbCr', (y, cb, cr))

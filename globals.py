@@ -11,7 +11,7 @@ def initialize():
     TITLE = ["input", "pred", "output"]
     SAVED_PICS = {
         "Train": "",
-        "Validation": "./dataset/validation\\images\\butterfly_GT.bmp"
+        "Validation": "./dataset/validation/images/butterfly_GT.bmp"
     }
     PRINT_MESSAGE_FREQUENCY = 1000 # PRINT_MESSAGE_FREQUENCY = k => print message every kth iteration
     DRAW_IMAGE_FREQUENCY = 1 # e.g. DRAW_IMAGE_FREQUENCY = k => draw image trio every kth epoch

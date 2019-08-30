@@ -30,7 +30,7 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
     psnr_val = AverageMeter()
 
     # For each batch (iteration)
-    for iteri, (inputs, targets, paths) in enumerate(train_loader, 1):        
+    for iteri, (inputs, targets, paths) in enumerate(train_loader, 1):  
         inputs, targets = inputs.to(device), targets.to(device)
         optimizer.zero_grad() # Clear gradients
         preds = net(inputs) # Forward propagation
@@ -42,7 +42,8 @@ def train(train_loader, net, device, get_mse_loss, optimizer, epoch):
         train_loss.update(loss) # TODO: check
 
         console_log("Train", epoch, iteri, loss, psnr_val.loss)
-        save_visualized_image_trio("Train", epoch, iteri, loss, psnr_val.loss, inputs[0], preds[0], targets[0], paths[0]) # Assuming SGD with batch size = 1; therefore use inputs[0], preds[0], targets[0], paths[0]
+        for i in range(inputs.size()[0]):
+            save_visualized_image_trio("Train", epoch, iteri, loss, psnr_val.loss, inputs[i], preds[i], targets[i], paths[i]) # Assuming SGD with batch size = 1; therefore use inputs[0], preds[0], targets[0], paths[0]
 
     # Return the average loss of all batches in this epoch
     return train_loss.avg, psnr_val.avg

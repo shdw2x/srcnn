@@ -8,7 +8,7 @@ import globals
 class SRNET(nn.Module):
     def __init__(self):
         # Base class initialization
-        super(SRNET, self).__init__() #TODO: Search super (with parameters)
+        super(SRNET, self).__init__()
 
         self.layers = []
         calculate_padding = lambda f: int(get_pad_count(f))
